@@ -637,7 +637,7 @@ const scout = (state) => __awaiter(void 0, void 0, void 0, function* () {
                 yield Utils.delayClick();
                 startButtonEle[i].click();
             }
-            state.nextScoutTime = Utils.addToDate(new Date(), 0, Utils.randInt(30, 40), 0);
+            state.nextScoutTime = Utils.addToDate(new Date(), 0, Utils.randInt(2, 4), 0);
             yield Navigation.goToFields(state, CurrentActionEnum.IDLE);
             return;
         }
