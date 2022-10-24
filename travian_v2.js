@@ -664,23 +664,6 @@ const farm = (state) => __awaiter(void 0, void 0, void 0, function* () {
             $('a[href="/report/offensive"]')[0].click();
             return;
         }
-        else if (state.currentPage === CurrentPageEnum.OFF_REPORT) {
-            const unreadReports = $("#overview > tbody").find(".messageStatusUnread");
-            // const unreadReports = $("#overview > tbody").find(".messageStatusUnread")
-            //     .filter((_, msg) => !$($(msg).parent().parent().find('a')[2]).text().includes("Unoccupied oasis"))
-            state.feature.debug && console.log("Unread report: " + unreadReports.length);
-            if (unreadReports.length > 0) {
-                if (!state.feature.disableStopOnLoss) {
-                    const feature = state.feature;
-                    feature.autoFarm = false;
-                    state.feature = feature;
-                }
-                fetch(`https://api.telegram.org/bot${state.telegramToken}/sendMessage?chat_id=${state.telegramChatId}&text=Losses occurred, please check the offensive report`);
-            }
-            state.nextCheckReportTime = Utils.addToDate(new Date(), 0, 1, 0);
-            yield Navigation.goToTown(state, CurrentActionEnum.FARM);
-            return;
-        }
         else if (state.currentPage === CurrentPageEnum.BUILDING && params.get('id') === '39' && params.get('gid') === '16' && params.get('tt') === '99') {
             const startButtonEle = $('.startButton[value=Start]').filter((_, button) => {
                 return $(button).parent().parent().find('.listName').find('span').text() !== "Scout";
@@ -962,7 +945,6 @@ const render = (state) => {
             <input id="toggleAutoBuild" class="ml-5" type="checkbox" ${state.feature.autoBuild ? 'checked' : ''}/> Auto build
             <input id="toggleAutoScout" class="ml-5" type="checkbox" ${state.feature.autoScout ? 'checked' : ''}/> Auto scout
             <input id="toggleAutoFarm" class="ml-5" type="checkbox" ${state.feature.autoFarm ? 'checked' : ''}/> Auto farm
-            <input id="toggleDisableStopOnLoss" class="ml-5" type="checkbox" ${state.feature.disableStopOnLoss ? 'checked' : ''}/> Disable stop on loss
             <input id="toggleAutoCustomFarm" class="ml-5" type="checkbox" ${state.feature.autoCustomFarm ? 'checked' : ''}/> Auto custom farm
             <input id="toggleAlertAttack" class="ml-5" type="checkbox" ${state.feature.alertAttack ? 'checked' : ''}/> Alert attack
             <input id="toggleAlertEmptyBuildQueue" class="ml-5" type="checkbox" ${state.feature.alertEmptyBuildQueue ? 'checked' : ''}/> Alert empty build queue
