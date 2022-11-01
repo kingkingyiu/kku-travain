@@ -9,7 +9,7 @@ var __awaiter = (this && this.__awaiter) || function (thisArg, _arguments, P, ge
     });
 };
 var _a, _b;
-const BUILD_TIME = "2022/10/22 23:41:30";
+const BUILD_TIME = "2022/10/29 09:30:04";
 const RUN_INTERVAL = 10000;
 const GID_NAME_MAP = {
     "-1": "Unknown",
@@ -125,6 +125,7 @@ StateHandler.INITIAL_STATE = {
         alertResourceCapacityFull: false,
         autoScout: false,
         autoFarm: false,
+        disableReportChecking: false,
         disableStopOnLoss: false,
         autoCustomFarm: false,
         debug: false
@@ -134,6 +135,7 @@ StateHandler.INITIAL_STATE = {
     nextFarmTime: new Date(),
     nextCheckReportTime: new Date(),
     farmIntervalMinutes: { min: 2, max: 4 },
+    plusEnabled: false,
     telegramChatId: '',
     telegramToken: '',
     username: '',
@@ -152,7 +154,7 @@ Utils.sleep = (ms) => {
     return new Promise(resolve => setTimeout(resolve, ms));
 };
 Utils.delayClick = () => __awaiter(void 0, void 0, void 0, function* () {
-    yield Utils.sleep(Utils.randInt(1000, 5000));
+    yield Utils.sleep(Utils.randInt(1000, 2000));
 });
 Utils.addToDate = (date, hour, minute, second) => {
     return new Date(date.getTime() + hour * 60 * 60 * 1000 + minute * 60 * 1000 + second * 1000);
@@ -169,6 +171,29 @@ Utils.formatDate = (dateInput) => {
 };
 Utils.isSufficientResources = (required, own) => {
     return required.lumber <= own.lumber && required.clay <= own.clay && required.iron <= own.iron && required.crop <= own.crop;
+};
+Utils.sumRecord = (r1, r2) => {
+    let result = {};
+    Object.keys(r1).forEach(key => {
+        if (!Object.keys(result).includes(key)) {
+            result = Object.assign(Object.assign({}, result), { [key]: "0" });
+        }
+    });
+    Object.keys(21).forEach(key => {
+        if (!Object.keys(result).includes(key)) {
+            result = Object.assign(Object.assign({}, result), { [key]: "0" });
+        }
+    });
+    Object.entries(r1).map(([key, value]) => {
+        if (!!value || !!r2[key]) {
+            const r2Value = r2[key];
+            result = Object.assign(Object.assign({}, result), { [key]: (parseInt(value) + parseInt(r2Value)).toString() });
+        }
+    });
+    return result;
+};
+Utils.groupByAndSum = (records) => {
+    return records.reduce((res, value) => Utils.sumRecord(res, value), {});
 };
 class Navigation {
 }
@@ -569,9 +594,10 @@ const build = (state) => __awaiter(void 0, void 0, void 0, function* () {
     // Try building in current village
     const villages = state.villages;
     const village = villages[state.currentVillageId];
+    const buildQueueThreshold = state.plusEnabled ? 2 : 1;
     if (village.pendingBuildTasks.length > 0) {
         const task = village.pendingBuildTasks[0];
-        if (village.currentBuildTasks.length < 2
+        if (village.currentBuildTasks.length < buildQueueThreshold
             && [CurrentPageEnum.FIELDS, CurrentPageEnum.TOWN].includes(state.currentPage)
             && Utils.isSufficientResources(task.resources, village.resources)) {
             const success = yield Navigation.goToBuilding(state, task.aid, task.gid, CurrentActionEnum.BUILD);
@@ -614,7 +640,7 @@ const build = (state) => __awaiter(void 0, void 0, void 0, function* () {
     // Check if need to build in another village
     const nextVillageIdToBuild = Object.entries(state.villages)
         .filter(([_, village]) => village.pendingBuildTasks.length > 0
-        && village.currentBuildTasks.filter(task => new Date(task.finishTime) > new Date()).length < 2
+        && village.currentBuildTasks.filter(task => new Date(task.finishTime) > new Date()).length < buildQueueThreshold
         && Utils.isSufficientResources(village.pendingBuildTasks[0].resources, village.resources))
         .map(([id, _]) => id)
         .find(_ => true);
@@ -637,7 +663,7 @@ const scout = (state) => __awaiter(void 0, void 0, void 0, function* () {
                 yield Utils.delayClick();
                 startButtonEle[i].click();
             }
-            state.nextScoutTime = Utils.addToDate(new Date(), 0, Utils.randInt(2, 4), 0);
+            state.nextScoutTime = Utils.addToDate(new Date(), 0, Utils.randInt(30, 40), 0);
             yield Navigation.goToFields(state, CurrentActionEnum.IDLE);
             return;
         }
@@ -699,7 +725,7 @@ const farm = (state) => __awaiter(void 0, void 0, void 0, function* () {
             return;
         }
         else if (state.currentPage === CurrentPageEnum.TOWN) {
-            if (new Date(state.nextCheckReportTime) < new Date()) {
+            if (new Date(state.nextCheckReportTime) < new Date() && !state.feature.disableReportChecking) {
                 yield Navigation.goToReport(state, CurrentActionEnum.FARM);
             }
             else {
@@ -708,7 +734,7 @@ const farm = (state) => __awaiter(void 0, void 0, void 0, function* () {
             return;
         }
         else {
-            if (new Date(state.nextCheckReportTime) < new Date()) {
+            if (new Date(state.nextCheckReportTime) < new Date() && !state.feature.disableReportChecking) {
                 yield Navigation.goToReport(state, CurrentActionEnum.FARM);
             }
             else {
@@ -722,7 +748,7 @@ const checkAutoEvade = (state) => __awaiter(void 0, void 0, void 0, function* ()
     var _c, _d;
     const params = new URLSearchParams(window.location.search);
     const villages = state.villages;
-    const villageRequireEvade = Object.values(villages).filter(v => !!v.evadeTime).find(v => new Date(v.evadeTime) < new Date());
+    const villageRequireEvade = Object.values(villages).filter(v => !!v.evadeTime).find(v => v.autoEvade && new Date(v.evadeTime) < new Date());
     if (villageRequireEvade) {
         if (state.currentPage === CurrentPageEnum.BUILDING && params.get('id') === '39' && params.get('gid') === '16' && params.get('tt') !== '2') {
             yield Utils.delayClick();
@@ -791,14 +817,20 @@ const executeCustomFarm = (state, idx) => __awaiter(void 0, void 0, void 0, func
             const sendTroopButton = $("#ok");
             const confirmButton = $("#checksum");
             if (sendTroopButton.length > 0) {
-                Object.keys(customFarm.troops).forEach(troopKey => {
+                for (const troopKey of Object.keys(customFarm.troops)) {
                     if (customFarm.troops[troopKey]) {
                         state.feature.debug && (console.log("Troop Key: ", troopKey));
                         const troopInputEle = $(`input[name="${troopKey}"]`);
+                        if (troopInputEle.prop('disabled')) {
+                            village.customFarms[idx].nextCustomFarmTime = Utils.addToDate(new Date(), 0, 1, 0);
+                            state.villages = villages;
+                            yield Navigation.goToTown(state, CurrentActionEnum.IDLE);
+                            return;
+                        }
                         troopInputEle[0].click();
                         troopInputEle.val(customFarm.troops[troopKey]);
                     }
-                });
+                }
                 $("#xCoordInput").val(customFarm.position.x);
                 $("#yCoordInput").val(customFarm.position.y);
                 if (customFarm.type === FarmType.ATTACK) {
@@ -818,7 +850,7 @@ const executeCustomFarm = (state, idx) => __awaiter(void 0, void 0, void 0, func
         }
         else if (state.currentPage === CurrentPageEnum.BUILDING && state.currentAction === CurrentActionEnum.CUSTOM_FARM
             && params.get('gid') === '16' && params.get('tt') === '1') {
-            village.customFarms[idx].nextCustomFarmTime = Utils.addToDate(new Date(), 0, Utils.randInt(customFarm.farmIntervalMinutes.min, customFarm.farmIntervalMinutes.max), Utils.randInt(0, 59));
+            village.customFarms[idx].nextCustomFarmTime = Utils.addToDate(new Date(), 0, Utils.randInt(customFarm.farmIntervalMinutes.min, customFarm.farmIntervalMinutes.max), Utils.randInt(0, 10));
             state.villages = villages;
             yield Navigation.goToFields(state, CurrentActionEnum.IDLE);
             return;
@@ -954,6 +986,17 @@ const render = (state) => {
         else
             $('#total-res').replaceWith(totalResources);
     }
+    if (state.currentPage === CurrentPageEnum.BUILDING && params.get('gid') === '16' && params.get('tt') === '2') {
+        const x = parseInt($("#xCoordInput").val());
+        const y = parseInt($("#yCoordInput").val());
+        if ((currentVillage.customFarms || []).find(customFarm => customFarm.position.x === x && customFarm.position.y === y)) {
+            const customFarmWarning = `<div id="custom-farm-warning"><br/><br/>This position is included in custom farm already</div>`;
+            if ($('#custom-farm-warning').length === 0)
+                $("#ok").after(customFarmWarning);
+            else
+                $('#custom-farm-warning').replaceWith(customFarmWarning);
+        }
+    }
     $('#console').html(`
         <div class="flex-row">
             <h4>Console</h4>
@@ -962,6 +1005,7 @@ const render = (state) => {
             <input id="toggleAutoBuild" class="ml-5" type="checkbox" ${state.feature.autoBuild ? 'checked' : ''}/> Auto build
             <input id="toggleAutoScout" class="ml-5" type="checkbox" ${state.feature.autoScout ? 'checked' : ''}/> Auto scout
             <input id="toggleAutoFarm" class="ml-5" type="checkbox" ${state.feature.autoFarm ? 'checked' : ''}/> Auto farm
+            <input id="toggleDisableReportChecking" class="ml-5" type="checkbox" ${state.feature.disableReportChecking ? 'checked' : ''}/> Disable report checking
             <input id="toggleDisableStopOnLoss" class="ml-5" type="checkbox" ${state.feature.disableStopOnLoss ? 'checked' : ''}/> Disable stop on loss
             <input id="toggleAutoCustomFarm" class="ml-5" type="checkbox" ${state.feature.autoCustomFarm ? 'checked' : ''}/> Auto custom farm
             <input id="toggleAlertAttack" class="ml-5" type="checkbox" ${state.feature.alertAttack ? 'checked' : ''}/> Alert attack
@@ -996,6 +1040,9 @@ const render = (state) => {
                     <div>Last update: ${Utils.formatDate(village.lastUpdatedTime)}</div>
                     <div>Attack alert backoff: ${Utils.formatDate(village.attackAlertBackoff)}</div>
                     <div>Empty build queue alert backoff: ${Utils.formatDate(village.emptyBuildQueueAlertBackoff)}</div>
+                    ${village.customFarms && `<div>
+                            Custom farm summary: ${Object.entries(Utils.groupByAndSum(village.customFarms.map(customFarm => customFarm.troops))).map((key, value) => `<div>${key}: ${value}</div>`)}
+                    </div>`}
                     <br />
                     ${state.currentPage === CurrentPageEnum.BUILDING && state.currentVillageId === village.id && params.get('gid') === '16' && params.get('tt') === '2' ?
         `<div class="flex-row">
@@ -1094,7 +1141,7 @@ const render = (state) => {
                 const troopInput = $(td).find("input");
                 const troopKey = troopInput.attr('name');
                 const troopCount = troopInput.val();
-                if (troopKey && troopInput) {
+                if (troopKey && troopInput && !!troopCount) {
                     customFarm.troops[troopKey] = troopCount;
                 }
             });
@@ -1186,6 +1233,7 @@ const render = (state) => {
     handleFeatureToggle('#toggleAutoBuild', state, 'autoBuild');
     handleFeatureToggle('#toggleAutoScout', state, 'autoScout');
     handleFeatureToggle('#toggleAutoFarm', state, 'autoFarm');
+    handleFeatureToggle('#toggleDisableReportChecking', state, 'disableReportChecking');
     handleFeatureToggle('#toggleDisableStopOnLoss', state, 'disableStopOnLoss');
     handleFeatureToggle('#toggleAutoCustomFarm', state, 'autoCustomFarm');
     handleFeatureToggle('#toggleAlertAttack', state, 'alertAttack');
@@ -1196,6 +1244,7 @@ const render = (state) => {
 const run = (state) => __awaiter(void 0, void 0, void 0, function* () {
     while (true) {
         updateCurrentPage(state);
+        state.plusEnabled = !!!$('.market.gold').length;
         if ([CurrentPageEnum.LOGIN].includes(state.currentPage) && state.feature.autoLogin) {
             state.feature.debug && console.log("Attempt login");
             yield login(state);
